@@ -55,6 +55,18 @@ defmodule VM do
       [0, 4] ->
         {:put, input_params(ops, ip, digits, 1), ip+2}
 
+      [0, 5] ->
+        {:jmpit, input_params(ops, ip, digits, 2), ip+3}
+
+      [0, 6] ->
+        {:jmpif, input_params(ops, ip, digits, 2), ip+3}
+
+      [0, 7] ->
+        {:lt, input_params(ops, ip, digits, 2), Enum.at(ops, ip+3), ip+4}
+
+      [0, 8] ->
+        {:eq, input_params(ops, ip, digits, 2), Enum.at(ops, ip+3), ip+4}
+
       [9, 9] ->
         {:halt, []}
     end
@@ -92,6 +104,22 @@ defmodule VM do
       {:put, [val], ip} ->
         IO.puts("#{val}")
         %{vm | ip: ip}
+
+      {:jmpit, [a, b], ip} ->
+        ip = if a != 0, do: b, else: ip
+        %{vm | ip: ip}
+
+      {:jmpif, [a, b], ip} ->
+        ip = if a == 0, do: b, else: ip
+        %{vm | ip: ip}
+
+      {:lt, [a, b], out, ip} ->
+        ops = List.replace_at(vm.ops, out, (if a < b, do: 1, else: 0))
+        %{vm | ip: ip, ops: ops}
+
+      {:eq, [a, b], out, ip} ->
+        ops = List.replace_at(vm.ops, out, (if a == b, do: 1, else: 0))
+        %{vm | ip: ip, ops: ops}
 
       {:halt, _} ->
         {:halt, vm}
