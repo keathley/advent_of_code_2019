@@ -7,20 +7,52 @@ defmodule OrbitMap do
   end
 
   def build(inputs) do
-    g = :digraph.new()
-
-    for [v1, v2] <- inputs do
-      :digraph.add_vertex(g, v1)
-      :digraph.add_vertex(g, v2)
-      :digraph.add_edge(g, v1, v2)
-      :digraph.add_edge(g, v2, v1)
-    end
-
-    g
+    Enum.reduce(inputs, %{}, fn [v1, v2], g ->
+      g
+      |> Map.update(v1, [v2], & [v2 | &1])
+      |> Map.update(v2, [v1], & [v1 | &1])
+    end)
   end
 
-  def path(g, v1, v2) do
-    Enum.count(:digraph.get_short_path(g, v1, v2)) - 3
+  # BFS to find to create the shortest path tree
+  def distance(g, v1, v2) do
+    Map.get(bfs(g, v1), v2)
+  end
+
+  def bfs(g, source) do
+    dists = for {vertex, _} <- g,
+      do: {vertex, :infinity},
+      into: %{}
+
+    dists = Map.put(dists, source, 0)
+
+    q = :queue.new()
+    q = :queue.in(source, q)
+
+    bfs(g, q, dists)
+  end
+
+  defp bfs(g, q, dists) do
+    if :queue.is_empty(q) do
+      dists
+    else
+      {{:value, u}, q} = :queue.out(q)
+      {dists, q} = Enum.reduce(neighbors(g, u), {dists, q}, fn v, {d, q} ->
+        if dists[v] == :infinity do
+          q = :queue.in(v, q)
+          d = Map.put(d, v, d[u] + 1)
+          {d, q}
+        else
+          {d, q}
+        end
+      end)
+
+      bfs(g, q, dists)
+    end
+  end
+
+  defp neighbors(g, u) do
+    Map.get(g, u)
   end
 
   def total_orbits(g) do
