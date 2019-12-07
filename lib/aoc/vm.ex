@@ -9,7 +9,12 @@ defmodule VM do
   end
 
   def new(ops \\ []) do
-    %{ip: 0, ops: ops, inputs: [], outputs: []}
+    %{ip: 0, ops: ops, parent: self(), inputs: [], outputs: []}
+  end
+
+  def start(str) do
+    vm = load(str)
+    spawn(fn -> run(vm) end)
   end
 
   def run(vm, inputs) do
@@ -18,7 +23,9 @@ defmodule VM do
 
   # Halt is returned as a signal from the step function below and tells us to
   # stop running
-  def run({:halt, vm}), do: vm.outputs
+  def run({:halt, %{outputs: [out|_rest]}=vm}) do
+    send(vm.parent, {:done, self(), out})
+  end
   def run(vm), do: run(step(vm))
 
   def restore_state(vm, noun, verb) do
@@ -99,11 +106,15 @@ defmodule VM do
         %{vm | ip: ip, ops: ops}
 
       {:get, out, ip} ->
-        [input | rest] = vm.inputs
-        ops = List.replace_at(vm.ops, out, input)
-        %{vm | ip: ip, ops: ops, inputs: rest}
+        # [input | rest] = vm.inputs
+        receive do
+          {:get, input} ->
+            ops = List.replace_at(vm.ops, out, input)
+            %{vm | ip: ip, ops: ops}
+        end
 
       {:put, [val], ip} ->
+        send(vm.parent, {:put, self(), val})
         %{vm | ip: ip, outputs: [val | vm.outputs]}
 
       {:jmpit, [a, b], ip} ->
