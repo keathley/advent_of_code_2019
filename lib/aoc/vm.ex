@@ -1,5 +1,5 @@
 defmodule VM do
-  def from_string(str) do
+  def load(str) do
     ops =
       str
       |> String.split(",")
@@ -9,12 +9,16 @@ defmodule VM do
   end
 
   def new(ops \\ []) do
-    %{ip: 0, ops: ops}
+    %{ip: 0, ops: ops, inputs: [], outputs: []}
+  end
+
+  def run(vm, inputs) do
+    run(%{vm | inputs: inputs})
   end
 
   # Halt is returned as a signal from the step function below and tells us to
   # stop running
-  def run({:halt, vm}), do: Enum.at(vm.ops, 0)
+  def run({:halt, vm}), do: vm.outputs
   def run(vm), do: run(step(vm))
 
   def restore_state(vm, noun, verb) do
@@ -95,15 +99,12 @@ defmodule VM do
         %{vm | ip: ip, ops: ops}
 
       {:get, out, ip} ->
-        input = IO.gets("Input: ")
-                |> String.trim()
-                |> String.to_integer()
+        [input | rest] = vm.inputs
         ops = List.replace_at(vm.ops, out, input)
-        %{vm | ip: ip, ops: ops}
+        %{vm | ip: ip, ops: ops, inputs: rest}
 
       {:put, [val], ip} ->
-        IO.puts("#{val}")
-        %{vm | ip: ip}
+        %{vm | ip: ip, outputs: [val | vm.outputs]}
 
       {:jmpit, [a, b], ip} ->
         ip = if a != 0, do: b, else: ip
