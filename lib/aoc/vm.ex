@@ -9,11 +9,12 @@ defmodule VM do
   end
 
   def new(ops \\ []) do
-    %{ip: 0, ops: ops, parent: self(), inputs: [], outputs: []}
+    extra_mem = for _i <- 0..4096, do: 0
+    %{ip: 0, ops: ops ++ extra_mem, parent: self(), inputs: [], outputs: [], relative_base: 0}
   end
 
-  def start(str) do
-    vm = load(str)
+  def start(vm) do
+    # vm = load(str)
     spawn(fn -> run(vm) end)
   end
 
@@ -41,7 +42,7 @@ defmodule VM do
     %{vm | ops: List.replace_at(vm.ops, position, val)}
   end
 
-  def to_instruction(ops, ip) do
+  def to_instruction(%{ops: ops, ip: ip}=vm) do
     number = Enum.at(ops, ip)
 
     digits =
@@ -50,53 +51,95 @@ defmodule VM do
       |> Enum.reverse()
 
     opcode = digits |> Enum.take(2)
-    # put opcodes back into teh correct shape
     opcode = if Enum.count(opcode) == 1, do: [0 | opcode], else: Enum.reverse(opcode)
 
     case opcode do
       [0, 1] ->
-        {:add, input_params(ops, ip, digits, 2), Enum.at(ops, ip+3), ip+4}
+        out = if 2 == Enum.at(digits, 4) do
+          Enum.at(vm.ops, vm.ip+3) + vm.relative_base
+        else
+          Enum.at(vm.ops, vm.ip+3)
+        end
+        {:add, input_params(vm, digits, 2), out, ip+4}
 
       [0, 2] ->
-        {:mul, input_params(ops, ip, digits, 2), Enum.at(ops, ip+3), ip+4}
+        out = if 2 == Enum.at(digits, 4) do
+          Enum.at(vm.ops, vm.ip+3) + vm.relative_base
+        else
+          Enum.at(vm.ops, vm.ip+3)
+        end
+        {:mul, input_params(vm, digits, 2), out, ip+4}
 
       [0, 3] ->
-        {:get, Enum.at(ops, ip+1), ip+2}
+        out = if 2 == Enum.at(digits, 2) do
+          Enum.at(vm.ops, vm.ip+1) + vm.relative_base
+        else
+          Enum.at(vm.ops, vm.ip+1)
+        end
+        {:get, out, ip+2}
 
       [0, 4] ->
-        {:put, input_params(ops, ip, digits, 1), ip+2}
+        {:put, input_params(vm, digits, 1), ip+2}
 
       [0, 5] ->
-        {:jmpit, input_params(ops, ip, digits, 2), ip+3}
+        {:jmpit, input_params(vm, digits, 2), ip+3}
 
       [0, 6] ->
-        {:jmpif, input_params(ops, ip, digits, 2), ip+3}
+        {:jmpif, input_params(vm, digits, 2), ip+3}
 
       [0, 7] ->
-        {:lt, input_params(ops, ip, digits, 2), Enum.at(ops, ip+3), ip+4}
+        out = if 2 == Enum.at(digits, 4) do
+          Enum.at(vm.ops, vm.ip+3) + vm.relative_base
+        else
+          Enum.at(vm.ops, vm.ip+3)
+        end
+        {:lt, input_params(vm, digits, 2), out, ip+4}
 
       [0, 8] ->
-        {:eq, input_params(ops, ip, digits, 2), Enum.at(ops, ip+3), ip+4}
+        out = if 2 == Enum.at(digits, 4) do
+          Enum.at(vm.ops, vm.ip+3) + vm.relative_base
+        else
+          Enum.at(vm.ops, vm.ip+3)
+        end
+        {:eq, input_params(vm, digits, 2), out, ip+4}
+
+      [0, 9] ->
+        {:move_base, input_params(vm, digits, 1), ip+2}
 
       [9, 9] ->
         {:halt, []}
     end
   end
 
-  def input_params(ops, ip, instruction, count) do
+  def input_params(vm, instruction, count) do
     for i <- 1..count do
-      val = Enum.at(ops, ip+i)
-      if Enum.at(instruction, i+1) == 1 do
-        val
-      else
-        Enum.at(ops, val)
+      val = Enum.at(vm.ops, vm.ip+i)
+      mode = Enum.at(instruction, i+1)
+
+      cond do
+        mode == 2 ->
+          offset = vm.relative_base + val
+          if offset < 0 do
+            raise ArgumentError, "memory position cannot be negative"
+          end
+          Enum.at(vm.ops, offset)
+        mode == 1 ->
+          val
+        true ->
+          if val < 0 do
+            raise ArgumentError, "memory position cannot be negative"
+          end
+          Enum.at(vm.ops, val)
       end
     end
   end
 
+  def output_params(vm, instruction, count) do
+  end
+
   # Addition
   def step(vm) do
-    case to_instruction(vm.ops, vm.ip) do
+    case to_instruction(vm) do
       {:add, [a, b], out, ip} ->
         ops = List.replace_at(vm.ops, out, a + b)
         %{vm | ip: ip, ops: ops}
@@ -106,15 +149,19 @@ defmodule VM do
         %{vm | ip: ip, ops: ops}
 
       {:get, out, ip} ->
+        input = IO.gets("input:")
+                |> String.trim()
+                |> String.to_integer()
         # [input | rest] = vm.inputs
-        receive do
-          {:get, input} ->
-            ops = List.replace_at(vm.ops, out, input)
-            %{vm | ip: ip, ops: ops}
-        end
+        # receive do
+        #   {:get, input} ->
+        ops = List.replace_at(vm.ops, out, input)
+        %{vm | ip: ip, ops: ops}
+        # end
 
       {:put, [val], ip} ->
-        send(vm.parent, {:put, self(), val})
+        IO.puts(val)
+        # send(vm.parent, {:put, self(), val})
         %{vm | ip: ip, outputs: [val | vm.outputs]}
 
       {:jmpit, [a, b], ip} ->
@@ -132,6 +179,9 @@ defmodule VM do
       {:eq, [a, b], out, ip} ->
         ops = List.replace_at(vm.ops, out, (if a == b, do: 1, else: 0))
         %{vm | ip: ip, ops: ops}
+
+      {:move_base, [val], ip} ->
+        %{vm | relative_base: vm.relative_base + val, ip: ip}
 
       {:halt, _} ->
         {:halt, vm}
