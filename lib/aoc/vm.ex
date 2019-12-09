@@ -55,24 +55,28 @@ defmodule VM do
 
     case opcode do
       [0, 1] ->
-        {:add, input_params(vm, digits, 2), Enum.at(ops, ip+3), ip+4}
+        out = if 2 == Enum.at(digits, 4) do
+          Enum.at(vm.ops, vm.ip+3) + vm.relative_base
+        else
+          Enum.at(vm.ops, vm.ip+3)
+        end
+        {:add, input_params(vm, digits, 2), out, ip+4}
 
       [0, 2] ->
-        {:mul, input_params(vm, digits, 2), Enum.at(ops, ip+3), ip+4}
+        out = if 2 == Enum.at(digits, 4) do
+          Enum.at(vm.ops, vm.ip+3) + vm.relative_base
+        else
+          Enum.at(vm.ops, vm.ip+3)
+        end
+        {:mul, input_params(vm, digits, 2), out, ip+4}
 
       [0, 3] ->
-        [out] = input_params(vm, digits, 1)
-        IO.inspect([
-          vm,
-          Enum.at(vm.ops, vm.ip),
-          Enum.at(vm.ops, vm.ip+1),
-          Enum.at(vm.ops, vm.ip+1)+vm.relative_base,
-          Enum.at(vm.ops, Enum.at(vm.ops, vm.ip+1)+vm.relative_base),
-          out,
-          Enum.at(ops, ip+1)
-        ], label: "Output pos")
+        out = if 2 == Enum.at(digits, 2) do
+          Enum.at(vm.ops, vm.ip+1) + vm.relative_base
+        else
+          Enum.at(vm.ops, vm.ip+1)
+        end
         {:get, out, ip+2}
-        # {:get, Enum.at(ops, ip+1), ip+2}
 
       [0, 4] ->
         {:put, input_params(vm, digits, 1), ip+2}
@@ -84,10 +88,20 @@ defmodule VM do
         {:jmpif, input_params(vm, digits, 2), ip+3}
 
       [0, 7] ->
-        {:lt, input_params(vm, digits, 2), Enum.at(ops, ip+3), ip+4}
+        out = if 2 == Enum.at(digits, 4) do
+          Enum.at(vm.ops, vm.ip+3) + vm.relative_base
+        else
+          Enum.at(vm.ops, vm.ip+3)
+        end
+        {:lt, input_params(vm, digits, 2), out, ip+4}
 
       [0, 8] ->
-        {:eq, input_params(vm, digits, 2), Enum.at(ops, ip+3), ip+4}
+        out = if 2 == Enum.at(digits, 4) do
+          Enum.at(vm.ops, vm.ip+3) + vm.relative_base
+        else
+          Enum.at(vm.ops, vm.ip+3)
+        end
+        {:eq, input_params(vm, digits, 2), out, ip+4}
 
       [0, 9] ->
         {:move_base, input_params(vm, digits, 1), ip+2}
@@ -120,6 +134,9 @@ defmodule VM do
     end
   end
 
+  def output_params(vm, instruction, count) do
+  end
+
   # Addition
   def step(vm) do
     case to_instruction(vm) do
@@ -138,10 +155,8 @@ defmodule VM do
         # [input | rest] = vm.inputs
         # receive do
         #   {:get, input} ->
-        IO.inspect([input, out], label: "Getting input")
         ops = List.replace_at(vm.ops, out, input)
         %{vm | ip: ip, ops: ops}
-        |> IO.inspect(label: "Updated")
         # end
 
       {:put, [val], ip} ->
