@@ -14,7 +14,6 @@ defmodule VM do
   end
 
   def start(vm) do
-    # vm = load(str)
     spawn(fn -> run(vm) end)
   end
 
@@ -149,18 +148,21 @@ defmodule VM do
         %{vm | ip: ip, ops: ops}
 
       {:get, out, ip} ->
-        input = IO.gets("input:")
-                |> String.trim()
-                |> String.to_integer()
+        # input = IO.gets("input:")
+        #         |> String.trim()
+        #         |> String.to_integer()
         # [input | rest] = vm.inputs
-        # receive do
-        #   {:get, input} ->
-        ops = List.replace_at(vm.ops, out, input)
-        %{vm | ip: ip, ops: ops}
+        send(vm.parent, {:gets, self()})
+        receive do
+          {:ack, input} ->
+            ops = List.replace_at(vm.ops, out, input)
+            %{vm | ip: ip, ops: ops}
+        end
         # end
 
       {:put, [val], ip} ->
-        IO.puts(val)
+        send(vm.parent, {:puts, self(), val})
+        # IO.puts(val)
         # send(vm.parent, {:put, self(), val})
         %{vm | ip: ip, outputs: [val | vm.outputs]}
 
